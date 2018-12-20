@@ -49,3 +49,8 @@ to control exactly what percentage of the resources each of these two
 (base or view writes) can take.
 
 ## How to use Flowsim
+```
+./flowsim.py examples/case4
+xv out/*.png
+```
+

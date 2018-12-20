@@ -32,6 +32,7 @@
 
 from collections import deque
 from random import shuffle, random
+import subprocess
 
 all_metrics = []
 class metric:
@@ -351,39 +352,40 @@ class coordinator:
             ret.update(rep.all_nodes())
         return ret
 
+
 ###############################################################################
-case=4
-if case==1:
-    # Test case for base-table only, three replicas with different speeds
-    # two.
-    b1 = replica(1, 0.1, 0)
-    b2 = replica(2, 0.09, 0)
-    b3 = replica(3, 0.08, 0)
-    c = coordinator(1, [b1, b2, b3], write_CL=2, max_background_writes=300)
-elif case==3:
-    # Test case for base-table only, three replicas one is slower than the other
-    # two.
-    b1 = replica(1, 0.1, 0)
-    b2 = replica(2, 0.1, 0)
-    b3 = replica(3, 0.099, 0)
-    c = coordinator(1, [b1, b2, b3], write_CL=2, max_background_writes=300)
-elif case==2:
-    # Test case for base-table and view. Some views finish faster than the
-    # base, some slower. Need to see everything is slowed down to the pace
-    # of the slowest view.
-    b1 = replica(1, 0.1, 0.06)
-    b2 = replica(2, 0.09, 0.04)
-    b3 = replica(3, 0.08, 0.11)
-    c = coordinator(1, [b1, b2, b3], write_CL=2, max_background_writes=300)
-elif case==4:
-    # Test case for base-table and view, based on case 3. All views are
-    # equally slow
-    b1 = replica(1, 0.1, 0.03)
-    b2 = replica(2, 0.1, 0.03)
-    b3 = replica(3, 0.099, 0.03)
-    c = coordinator(1, [b1, b2, b3], write_CL=2, max_background_writes=300)
-
-
+#case=4
+#if case==1:
+#    # Test case for base-table only, three replicas with different speeds
+#    # two.
+#    b1 = replica(1, 0.1, 0)
+#    b2 = replica(2, 0.09, 0)
+#    b3 = replica(3, 0.08, 0)
+#    c = coordinator(1, [b1, b2, b3], write_CL=2, max_background_writes=300)
+#elif case==3:
+#    # Test case for base-table only, three replicas one is slower than the other
+#    # two.
+#    b1 = replica(1, 0.1, 0)
+#    b2 = replica(2, 0.1, 0)
+#    b3 = replica(3, 0.099, 0)
+#    c = coordinator(1, [b1, b2, b3], write_CL=2, max_background_writes=300)
+#elif case==2:
+#    # Test case for base-table and view. Some views finish faster than the
+#    # base, some slower. Need to see everything is slowed down to the pace
+#    # of the slowest view.
+#    b1 = replica(1, 0.1, 0.06)
+#    b2 = replica(2, 0.09, 0.04)
+#    b3 = replica(3, 0.08, 0.11)
+#    c = coordinator(1, [b1, b2, b3], write_CL=2, max_background_writes=300)
+#elif case==4:
+#    # Test case for base-table and view, based on case 3. All views are
+#    # equally slow
+#    b1 = replica(1, 0.1, 0.03)
+#    b2 = replica(2, 0.1, 0.03)
+#    b3 = replica(3, 0.099, 0.03)
+#    c = coordinator(1, [b1, b2, b3], write_CL=2, max_background_writes=300)
+#
+#
 ###############################################################################
 
 average_window_ticks = 2000
@@ -391,7 +393,7 @@ metric_avg_throughput = metric("coordinator_avg_throughput_%s_ticks" % (average_
 
 def workload_variable_concurrency(c, client_concurrency, ticks):
     all_nodes = list(c.all_nodes())
-    for i in range(ticks):
+    for i in range(int(ticks)):
         if c.unreplied_writes() < client_concurrency(i):
             c.cql_write(i)
         for node in all_nodes:
@@ -407,7 +409,7 @@ def workload_fixed_concurrency(c, client_concurrency, ticks):
 
 # The workload
 #workload_fixed_concurrency(c, 50, 200000)
-workload_fixed_concurrency(c, 50, 400000)
+#workload_fixed_concurrency(c, 50, 400000)
 
 # Workload doubles concurrency in the middle. This can represent doubling
 # the number of clients connecting, i.e., not a very common occurance
@@ -441,16 +443,20 @@ workload_fixed_concurrency(c, 50, 400000)
 # dql=200, but 2000 also didn't work. What will?
 #workload_fixed_concurrency(c, 500, 500000)
 
+def flush_metrics():
+    for metric in all_metrics:
+        metric.f.flush()
 
+def close_metrics():
+    for metric in all_metrics:
+        metric.f.close()
+    all_metrics.clear()
 
-            
-# Run Gnuplot to generate nice graphs
-
-for metric in all_metrics:
-    metric.f.flush()
-
-import subprocess
 def plot(out,cmd):
+    # We use close_metrics() to flush and close all the data files so we
+    # can plot them. This means one cannot continue the simulation after
+    # the first plot.
+    close_metrics()
     print("plotting %s" % (out))
     subprocess.run(['gnuplot'], encoding='UTF-8', input="""
     #set terminal png size 1400,800 enhanced font "Sans,18"
@@ -458,109 +464,154 @@ def plot(out,cmd):
     set out "%s"
     """ % (out) + cmd)
 
-# TODO: consider moving graphs (and metrics) to have as X axis not
-# the ticks but rather the request number, it's easier to understand.
-if case == 1:
-    plot("out/1.png", """
-        set ylabel 'Background writes'
-        set xlabel 'Time (unspecified ticks)'
-        plot '%s'  w l lw 3 title 'Background writes', '%s' w l lw 3
-        """ % (c.metric_bg.fn, b1.metric_pending.fn))
-    plot("out/2.png", """
-        set ylabel 'Throughput (writes served per tick)'
-        set xlabel 'Time (ticks)'
-        set ytics add ("replica 1: %s" %s)
-        set ytics add ("replica 2: %s" %s)
-        set ytics add ("replica 3: %s" %s)
-        set grid
-        set yrange [0:0.2]
-        plot '%s'  w lines lw 3 title 'Throughput'
-        """ % (b1.write_speed, b1.write_speed, b2.write_speed, b2.write_speed, b3.write_speed, b3.write_speed, metric_avg_throughput.fn))
+# hz is the number of ticks per second. We want the graph to show
+# seconds, and requests per second - not ticks.
+def plot_throughput(hz, fn, misc):
+    plot(fn, """
+        set xlabel 'Time (seconds)'
+        %s
+        plot '%s' using ($1/%s):($2*%s) w lines lw 6 title 'Writes / second'
+        """ % (misc, metric_avg_throughput.fn, hz,hz))
 
-if case == 3:
-    # We do 0.1 writes per tick. To simulate 10,000 writes per second,
-    # each tick would be 1/100,000 of a second. Let's show on the graph
-    # seconds, or 100,000 ticks, so we need to multiply by 1/100,000
-    multiplier = 1/100000
-    plot("out/1.png", """
-        set ylabel 'Background writes'
-        set xlabel 'Time (seconds)'
-        #set xrange [0:1]
-        plot '%s'  using ($1*%s):2 w l lw 3 title ''
-        """ % (c.metric_bg.fn, multiplier))
-    plot("out/2.png", """
-        #set ylabel 'Throughput (writes per second)'
-        set xlabel 'Time (seconds)'
-        unset ytics
-        set ytics add ("replica 1, 2: %s" %s)
-        set ytics add ("replica 3: %s" %s)
-        #set grid
-        #set yrange [0:20000]
-        set yrange [9000:11000]
-        #set xrange [0:1]
-        plot '%s' using ($1*%s):($2*%s) w lines lw 6 title 'Writes / second'
-        """ % (round(b1.write_speed/multiplier), round(b1.write_speed/multiplier), round(b3.write_speed/multiplier), round(b3.write_speed/multiplier), metric_avg_throughput.fn, multiplier,1/multiplier))
-
-if case == 4:
-    # We do 0.1 writes per tick. To simulate 10,000 writes per second,
-    # each tick would be 1/100,000 of a second. Let's show on the graph
-    # seconds, or 100,000 ticks, so we need to multiply by 1/100,000
-    multiplier = 1/100000
-    plot("out/1.png", """
-        set ylabel 'Background writes'
-        set xlabel 'Time (seconds)'
-        #set xrange [0:1]
-        plot '%s'  using ($1*%s):2 w l lw 3 title ''
-        """ % (c.metric_bg.fn, multiplier))
-    plot("out/2.png", """
-        #set ylabel 'Throughput (writes per second)'
-        set xlabel 'Time (seconds)'
-        #unset ytics
-        #set ytics add ("replica 1, 2: %s" %s)
-        #set ytics add ("replica 3: %s" %s)
-        set ytics 0,1000
-        set grid
-        #set yrange [0:20000]
-        #set yrange [9000:11000]
-        set yrange [1000:11000]
-        #set xrange [0:1]
-        plot '%s' using ($1*%s):($2*%s) w lines lw 6 title 'Writes / second'
-        """ % (round(b1.write_speed/multiplier), round(b1.write_speed/multiplier), round(b3.write_speed/multiplier), round(b3.write_speed/multiplier), metric_avg_throughput.fn, multiplier,1/multiplier))
-    plot("out/3.png", """
-    set ylabel 'Pending view-update queue length'
+def plot_view_backlog(hz, b, fn, misc):
+    plot(fn, """
+    #set ylabel 'Pending view-update queue length'
     set xlabel 'Time (seconds)'
+    %s
     # show only view replica 1
-    plot '%s' using ($1*%s):($2) w lines lw 6 title ''
-    """ % (b1.view_replica.metric_pending.fn, multiplier))
+    plot '%s' using ($1/%s):($2) w lines lw 6 title 'View-update backlog'
+    """ % (misc, b.view_replica.metric_pending.fn, hz))
+
+def plot_background_writes(hz, c, fn, misc):
+    plot(fn, """
+        set xlabel 'Time (seconds)'
+        plot '%s'  using ($1/%s):2 w l lw 3 title 'Background writes'
+        """ % (c.metric_bg.fn, hz))
+
+import sys
+exec(open(sys.argv[1]).read())
 
 
-if case == 2:
+            
+# Run Gnuplot to generate nice graphs
+
+#for metric in all_metrics:
+#    metric.f.flush()
+#
+#import subprocess
+#def plot(out,cmd):
+#    print("plotting %s" % (out))
+#    subprocess.run(['gnuplot'], encoding='UTF-8', input="""
+#    #set terminal png size 1400,800 enhanced font "Sans,18"
+#    set terminal png size 1400,800 enhanced font "Sans,22"
+#    set out "%s"
+#    """ % (out) + cmd)
+#
+## TODO: consider moving graphs (and metrics) to have as X axis not
+## the ticks but rather the request number, it's easier to understand.
+#if case == 1:
 #    plot("out/1.png", """
 #        set ylabel 'Background writes'
 #        set xlabel 'Time (unspecified ticks)'
 #        plot '%s'  w l lw 3 title 'Background writes', '%s' w l lw 3
 #        """ % (c.metric_bg.fn, b1.metric_pending.fn))
-    plot("out/1.png", """
-        set ylabel 'Background writes'
-        set xlabel 'Time (unspecified ticks)'
-        plot '%s'  w l lw 3 title 'Background writes'
-        """ % (c.metric_bg.fn,))
-    plot("out/2.png", """
-        set ylabel 'Throughput (writes served per tick)'
-        set xlabel 'Time (ticks)'
-        set ytics add ("replica 1: %s" %s)
-        set ytics add ("replica 2: %s" %s)
-        set ytics add ("replica 3: %s" %s)
-        set ytics add ("slowest view: %s" %s)
-        set grid
-        set yrange [0:0.2]
-        plot '%s'  w lines lw 3 title 'Avg over %s ticks'
-        """ % (b1.write_speed, b1.write_speed, b2.write_speed, b2.write_speed, b3.write_speed, b3.write_speed, b2.view_replica.write_speed, b2.view_replica.write_speed, metric_avg_throughput.fn, average_window_ticks))
-    plot("out/3.png", """
-    set ylabel 'Pending view-update queue length'
-    set xlabel 'Time (ticks)'
-    plot '%s' w lines lw 3 title 'view replica 1', '%s'  w lines lw 3 title 'view replica 2', '%s'  w lines lw 3 title 'view replica 3'
-    """ % (b1.view_replica.metric_pending.fn, b2.view_replica.metric_pending.fn, b3.view_replica.metric_pending.fn))
+#    plot("out/2.png", """
+#        set ylabel 'Throughput (writes served per tick)'
+#        set xlabel 'Time (ticks)'
+#        set ytics add ("replica 1: %s" %s)
+#        set ytics add ("replica 2: %s" %s)
+#        set ytics add ("replica 3: %s" %s)
+#        set grid
+#        set yrange [0:0.2]
+#        plot '%s'  w lines lw 3 title 'Throughput'
+#        """ % (b1.write_speed, b1.write_speed, b2.write_speed, b2.write_speed, b3.write_speed, b3.write_speed, metric_avg_throughput.fn))
+#
+#if case == 3:
+#    # We do 0.1 writes per tick. To simulate 10,000 writes per second,
+#    # each tick would be 1/100,000 of a second. Let's show on the graph
+#    # seconds, or 100,000 ticks, so we need to multiply by 1/100,000
+#    multiplier = 1/100000
+#    plot("out/1.png", """
+#        set ylabel 'Background writes'
+#        set xlabel 'Time (seconds)'
+#        #set xrange [0:1]
+#        plot '%s'  using ($1*%s):2 w l lw 3 title ''
+#        """ % (c.metric_bg.fn, multiplier))
+#    plot("out/2.png", """
+#        #set ylabel 'Throughput (writes per second)'
+#        set xlabel 'Time (seconds)'
+#        unset ytics
+#        set ytics add ("replica 1, 2: %s" %s)
+#        set ytics add ("replica 3: %s" %s)
+#        #set grid
+#        #set yrange [0:20000]
+#        set yrange [9000:11000]
+#        #set xrange [0:1]
+#        plot '%s' using ($1*%s):($2*%s) w lines lw 6 title 'Writes / second'
+#        """ % (round(b1.write_speed/multiplier), round(b1.write_speed/multiplier), round(b3.write_speed/multiplier), round(b3.write_speed/multiplier), metric_avg_throughput.fn, multiplier,1/multiplier))
+#
+#if case == 4:
+#    # We do 0.1 writes per tick. To simulate 10,000 writes per second,
+#    # each tick would be 1/100,000 of a second. Let's show on the graph
+#    # seconds, or 100,000 ticks, so we need to multiply by 1/100,000
+#    multiplier = 1/100000
+#    plot("out/1.png", """
+#        set ylabel 'Background writes'
+#        set xlabel 'Time (seconds)'
+#        #set xrange [0:1]
+#        plot '%s'  using ($1*%s):2 w l lw 3 title ''
+#        """ % (c.metric_bg.fn, multiplier))
+#    plot("out/2.png", """
+#        #set ylabel 'Throughput (writes per second)'
+#        set xlabel 'Time (seconds)'
+#        #unset ytics
+#        #set ytics add ("replica 1, 2: %s" %s)
+#        #set ytics add ("replica 3: %s" %s)
+#        set ytics 0,1000
+#        set grid
+#        #set yrange [0:20000]
+#        #set yrange [9000:11000]
+#        set yrange [1000:11000]
+#        #set xrange [0:1]
+#        plot '%s' using ($1*%s):($2*%s) w lines lw 6 title 'Writes / second'
+#        """ % (round(b1.write_speed/multiplier), round(b1.write_speed/multiplier), round(b3.write_speed/multiplier), round(b3.write_speed/multiplier), metric_avg_throughput.fn, multiplier,1/multiplier))
+#    plot("out/3.png", """
+#    set ylabel 'Pending view-update queue length'
+#    set xlabel 'Time (seconds)'
+#    # show only view replica 1
+#    plot '%s' using ($1*%s):($2) w lines lw 6 title ''
+#    """ % (b1.view_replica.metric_pending.fn, multiplier))
+#
+#
+#if case == 2:
+##    plot("out/1.png", """
+##        set ylabel 'Background writes'
+##        set xlabel 'Time (unspecified ticks)'
+##        plot '%s'  w l lw 3 title 'Background writes', '%s' w l lw 3
+##        """ % (c.metric_bg.fn, b1.metric_pending.fn))
+#    plot("out/1.png", """
+#        set ylabel 'Background writes'
+#        set xlabel 'Time (unspecified ticks)'
+#        plot '%s'  w l lw 3 title 'Background writes'
+#        """ % (c.metric_bg.fn,))
+#    plot("out/2.png", """
+#        set ylabel 'Throughput (writes served per tick)'
+#        set xlabel 'Time (ticks)'
+#        set ytics add ("replica 1: %s" %s)
+#        set ytics add ("replica 2: %s" %s)
+#        set ytics add ("replica 3: %s" %s)
+#        set ytics add ("slowest view: %s" %s)
+#        set grid
+#        set yrange [0:0.2]
+#        plot '%s'  w lines lw 3 title 'Avg over %s ticks'
+#        """ % (b1.write_speed, b1.write_speed, b2.write_speed, b2.write_speed, b3.write_speed, b3.write_speed, b2.view_replica.write_speed, b2.view_replica.write_speed, metric_avg_throughput.fn, average_window_ticks))
+#    plot("out/3.png", """
+#    set ylabel 'Pending view-update queue length'
+#    set xlabel 'Time (ticks)'
+#    plot '%s' w lines lw 3 title 'view replica 1', '%s'  w lines lw 3 title 'view replica 2', '%s'  w lines lw 3 title 'view replica 3'
+#    """ % (b1.view_replica.metric_pending.fn, b2.view_replica.metric_pending.fn, b3.view_replica.metric_pending.fn))
+#
+
 
 # TODO: For ongoing_writes, also keep the tick when they started and then
 # when it is replied (moved to background_write or dropped from ongoing_writes),

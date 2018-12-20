@@ -1,0 +1,47 @@
+# Test case for base table and view. Three replicas, one is 1% slower than
+# the other two. The views writes have equal speed. Writes with CL=2.
+
+# In the simulation, use ticks of 1/100000 second. This means, for
+# example, that if we do 10,000 requests per second, we complete 0.1
+# requests per tick.
+
+hz = 100000.0
+
+# Two replicas have the same speed - 10,000 requests per second. One
+# is 1% slower - 9990 requests per second. The completion of view updates
+# is assumed to be slower, just 3000 requests per second.
+# Note that the current simulator simulates the view and base replicas
+# as separate machines. In real Scylla, the coordinators, base replicas
+# and view replicas are all the same machines, which need to share the
+# resources (CPU and disk bandwidth) between these different components)
+
+b1 = replica(1, 10000/hz, 3000/hz)
+b2 = replica(2, 10000/hz, 3000/hz)
+b3 = replica(3,  9900/hz, 3000/hz)
+
+# coordinator sends requests to the three above replicas, uses consistency
+# level 2, and the cjjlassic base-table throttling is configured with
+# a maximum number of background writes 300.
+
+c = coordinator(1, [b1, b2, b3], write_CL=2, max_background_writes=300)
+
+# Run a client with fixed concurrency 50 against coordinator c, for 4
+# seconds. This generates a bunch of data files in out/ with various
+# metrics.
+workload_fixed_concurrency(c, 50, 4*hz)
+
+# Generate nice graphs of the metrics we just generated.
+
+plot_throughput(hz, "out/2.png",
+    "set yrange [1000:11000]; set ytics 0,1000; set grid")
+# Show view-update backlog on base replica 1.
+plot_view_backlog(hz, b1, "out/3.png",
+    "set grid")
+# Show the number of background writes on the coordinator, i.e., writes
+# for which the coordinator have already replied, but still have replicas
+# that have not replied.
+# This graph is not very interesting in this example, because we're well
+# below the base-write speed limit and currently, the resources of the base
+# and view replicas are not shared.
+#plot_background_writes(hz, c, "out/1.png",
+#    "set grid")
