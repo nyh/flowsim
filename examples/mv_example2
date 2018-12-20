@@ -1,0 +1,34 @@
+# Test case for base table and view. Three replicas with three different
+# speeds, and views with three different speeds. Want to see everthing
+# is slowed down to the base of the slowest view.
+# Not a very realistic scenario because in real-life the base and views
+# are the same nodes.
+
+hz = 100000.0
+
+b1 = replica(1, 10000/hz,  6000/hz)
+b2 = replica(2,  9000/hz,  4000/hz)
+b3 = replica(3,  8000/hz, 11000/hz)
+
+alpha = 1.0
+def mv_pressure(c):
+    return mv_pressure_linear_controller(c, alpha)
+
+c = coordinator(1, [b1, b2, b3], write_CL=2, max_background_writes=300, mv_pressure=mv_pressure)
+
+# Run a client with fixed concurrency 50 against coordinator c, for 4
+# seconds. This generates a bunch of data files in out/ with various
+# metrics.
+workload_fixed_concurrency(c, 50, 4*hz)
+
+plot_throughput(hz, "out/2.png",
+    "set yrange [1000:11000]; set ytics 0,1000; set grid")
+# Show view-update backlog on all three base replicas.
+plot_view_backlog(hz, b1, "out/3-1.png",
+    "set grid")
+plot_view_backlog(hz, b2, "out/3-2.png",
+    "set grid")
+plot_view_backlog(hz, b3, "out/3-3.png",
+    "set grid")
+plot_view_delay(hz, c, "out/4.png",
+    "set grid")

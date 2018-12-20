@@ -376,18 +376,6 @@ class coordinator:
             ret.update(rep.all_nodes())
         return ret
 
-
-###############################################################################
-#elif case==2:
-#    # Test case for base-table and view. Some views finish faster than the
-#    # base, some slower. Need to see everything is slowed down to the pace
-#    # of the slowest view.
-#    b1 = replica(1, 0.1, 0.06)
-#    b2 = replica(2, 0.09, 0.04)
-#    b3 = replica(3, 0.08, 0.11)
-#    c = coordinator(1, [b1, b2, b3], write_CL=2, max_background_writes=300)
-#
-#
 ###############################################################################
 
 average_window_ticks = 2000
@@ -504,42 +492,9 @@ def plot_background_writes(hz, c, fn, misc):
 import sys
 exec(open(sys.argv[1]).read())
 
-
-            
-#if case == 2:
-##    plot("out/1.png", """
-##        set ylabel 'Background writes'
-##        set xlabel 'Time (unspecified ticks)'
-##        plot '%s'  w l lw 3 title 'Background writes', '%s' w l lw 3
-##        """ % (c.metric_bg.fn, b1.metric_pending.fn))
-#    plot("out/1.png", """
-#        set ylabel 'Background writes'
-#        set xlabel 'Time (unspecified ticks)'
-#        plot '%s'  w l lw 3 title 'Background writes'
-#        """ % (c.metric_bg.fn,))
-#    plot("out/2.png", """
-#        set ylabel 'Throughput (writes served per tick)'
-#        set xlabel 'Time (ticks)'
-#        set ytics add ("replica 1: %s" %s)
-#        set ytics add ("replica 2: %s" %s)
-#        set ytics add ("replica 3: %s" %s)
-#        set ytics add ("slowest view: %s" %s)
-#        set grid
-#        set yrange [0:0.2]
-#        plot '%s'  w lines lw 3 title 'Avg over %s ticks'
-#        """ % (b1.write_speed, b1.write_speed, b2.write_speed, b2.write_speed, b3.write_speed, b3.write_speed, b2.view_replica.write_speed, b2.view_replica.write_speed, metric_avg_throughput.fn, average_window_ticks))
-#    plot("out/3.png", """
-#    set ylabel 'Pending view-update queue length'
-#    set xlabel 'Time (ticks)'
-#    plot '%s' w lines lw 3 title 'view replica 1', '%s'  w lines lw 3 title 'view replica 2', '%s'  w lines lw 3 title 'view replica 3'
-#    """ % (b1.view_replica.metric_pending.fn, b2.view_replica.metric_pending.fn, b3.view_replica.metric_pending.fn))
-#
-
-
 # TODO: For ongoing_writes, also keep the tick when they started and then
 # when it is replied (moved to background_write or dropped from ongoing_writes),
 # write the latency of the reply as a metric (maybe a histogram-like metric?)
 # Gleb suspects we have a problem of timeouts; Maybe in some situations we
 # keep a client unresponded for a long time because its write to the slowest
 # node is stuck in a very long queue.
-

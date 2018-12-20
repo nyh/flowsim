@@ -1,6 +1,6 @@
 # Test case for base table and view. Three replicas, one is 1% slower than
 # the other two. The views writes have equal speed. Writes with CL=2.
-alpha = 2.0
+alpha = 1.0
 def mv_pressure(c):
     return mv_pressure_linear_controller(c, alpha)
 exec(open('examples/mv_base').read())
