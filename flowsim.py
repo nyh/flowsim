@@ -1,11 +1,34 @@
 #!/usr/bin/python3
 
-# TODO: For ongoing_writes, also keep the tick when they started and then
-# when it is replied (moved to background_write or dropped from ongoing_writes),
-# write the latency of the reply as a metric (maybe a histogram-like metric?)
-# Gleb suspects we have a problem of timeouts; Maybe in some situations we
-# keep a client unresponded for a long time because its write to the slowest
-# node is stuck in a very long queue.
+# Flowsim is a simulator for Scylla's write flow control algorithms.
+#
+# It simulates a client with a fixed, or changing over time, concurrency which
+# makes write requests to a coordinator backed by N base replicas, and when
+# materialized views are involved, also N view replicas. Each of those
+# simulated nodes is configured with an inherent speed (how many requests it
+# can complete each second), and we simulate the requests, when they complete,
+# and how the different flow control algorithms cause the client to be
+# delayed, and the simulator allows us to graph the client's performance
+# over time, the length of various queues (that the flow-control algorithms
+# try to control), and so on.
+#
+# This is just a simulator, working in simulated time and normally completing
+# a simulation in just a few seconds; It does not involve setting up any
+# actual nodes or running Scylla. The advantage of this simulator over
+# running an actual Scylla is two-fold: First, it allows to easily experiment
+# with many different flow-control algorithms, with much shorter turnaround
+# times (running and hacking Scylla is usually much harder and slower).
+# Second, it allows to easily simulate hard-to-reproduce scenarios, such
+# as what happens when one node is 1% slower than other nodes; At the same
+# time it avoids the "noise" usually inherent in benchmarking real setups
+# and results in easier to understand and more reproducable graphs.
+#
+# Flowsim cannot currently simulate all aspects of a Scylla cluster. The most
+# glaring omission is that we currently treat the coordinator, the base
+# replicas, and view replicas, as separate nodes. In reality, these are all
+# on the same Scylla nodes, and all compete for resources (CPU and disk).
+# This can lead to flow-control issues that we can see in practice but the
+# simulator cannot currently simulate.
 
 from collections import deque
 from random import shuffle, random
@@ -13,16 +36,18 @@ from random import shuffle, random
 all_metrics = []
 class metric:
     def __init__(self, name):
-        print("metric %s" % (name))
         self.fn = "out/" + name + ".dat"
         self.f = open(self.fn, "w")
         all_metrics.append(self)
     def out(self, t, value):
         self.f.write("%s %s\n" % (t, value))        
 
+# A "replica" object is used to simulate a replica - a base-table replica
+# or a view-table replica. On this object one can write() to start a
+# write request, and tick() to advance to the next tick in the simulation.
 class replica:
     # id:    Identification string for this replica (used just for metric
-    #        file name)
+    #        file name).
     # speed: Number of write() calls that can be completed per tick.
     #        Speed may be floating point.
     # view_replica_speed: If non-zero, we create a "view replica", a new
@@ -71,6 +96,12 @@ class replica:
         if self.view_replica:
             ret.add(self.view_replica)
         return ret
+
+# A "coordinator" object is used to simulate a coordinator, which sends
+# write requests it got to a fixed list of base replicas (which, in turn,
+# may also send updates to view replicas). On this object one can cql_write()
+# to perform a write request, and tick() to advance to the next tick in the
+# simulation.
 class coordinator:
     # write_CL is desired write consistency level. After CL replicas have
     # responded, the coordinator replies to client and moves this request to
@@ -530,3 +561,11 @@ if case == 2:
     set xlabel 'Time (ticks)'
     plot '%s' w lines lw 3 title 'view replica 1', '%s'  w lines lw 3 title 'view replica 2', '%s'  w lines lw 3 title 'view replica 3'
     """ % (b1.view_replica.metric_pending.fn, b2.view_replica.metric_pending.fn, b3.view_replica.metric_pending.fn))
+
+# TODO: For ongoing_writes, also keep the tick when they started and then
+# when it is replied (moved to background_write or dropped from ongoing_writes),
+# write the latency of the reply as a metric (maybe a histogram-like metric?)
+# Gleb suspects we have a problem of timeouts; Maybe in some situations we
+# keep a client unresponded for a long time because its write to the slowest
+# node is stuck in a very long queue.
+
