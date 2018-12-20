@@ -397,6 +397,8 @@ def workload_fixed_concurrency(c, client_concurrency, ticks):
     workload_variable_concurrency(c, lambda t: client_concurrency, ticks)
 
 
+# TODO: Add the following examples to examples in the examples/ directory
+
 # The workload
 #workload_fixed_concurrency(c, 50, 200000)
 #workload_fixed_concurrency(c, 50, 400000)
@@ -427,7 +429,6 @@ def workload_fixed_concurrency(c, client_concurrency, ticks):
 # the correct average and queue length is never far from the desired 200.
 #from math import sin
 #workload_variable_concurrency(c, lambda t: 50+sin(t/63662*2)*sin(t/63662*2)*50, 200000)
-
 
 # FIXME: concurrency 500, doesn't work. Maybe can't aim to achieve
 # dql=200, but 2000 also didn't work. What will?
