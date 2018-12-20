@@ -28,11 +28,9 @@ workload_fixed_concurrency(c, 50, 4*hz)
 
 plot_throughput(hz, "out/2.png",
     "set yrange [0:11000]; set ytics 0,1000; set grid")
+
 # Show the number of background writes on the coordinator, i.e., writes
 # for which the coordinator have already replied, but still have replicas
 # that have not replied.
-# This graph is not very interesting in this example, because we're well
-# below the base-write speed limit and currently, the resources of the base
-# and view replicas are not shared.
 plot_background_writes(hz, c, "out/1.png",
     "set yrange [0:350]; set grid")
