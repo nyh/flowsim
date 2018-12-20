@@ -50,7 +50,7 @@ to control exactly what percentage of the resources each of these two
 
 ## How to use Flowsim
 ```
-./flowsim.py examples/case4
+./flowsim.py examples/mv_linear1
 xv out/*.png
 ```
 
