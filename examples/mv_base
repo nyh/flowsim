@@ -23,7 +23,7 @@ b3 = replica(3,  9900/hz, 3000/hz)
 # level 2, and the cjjlassic base-table throttling is configured with
 # a maximum number of background writes 300.
 
-c = coordinator(1, [b1, b2, b3], write_CL=2, max_background_writes=300)
+c = coordinator(1, [b1, b2, b3], write_CL=2, max_background_writes=300, mv_pressure=mv_pressure)
 
 # Run a client with fixed concurrency 50 against coordinator c, for 4
 # seconds. This generates a bunch of data files in out/ with various
@@ -45,3 +45,5 @@ plot_view_backlog(hz, b1, "out/3.png",
 # and view replicas are not shared.
 #plot_background_writes(hz, c, "out/1.png",
 #    "set grid")
+
+# TODO: plot the delay
