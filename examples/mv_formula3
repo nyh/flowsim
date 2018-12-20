@@ -1,0 +1,4 @@
+# Test case for base table and view. Three replicas, one is 1% slower than
+# the other two. The views writes have equal speed. Writes with CL=2.
+mv_pressure = mv_pressure_formula_3
+exec(open('examples/mv_base').read())

@@ -158,6 +158,63 @@ def mv_pressure_linear_changing_alpha(c, dbacklog):
     delay = backlog * c.alpha
     return delay
 
+# Attempt to achieve a near-zero queue. We don't recalculate delay all the
+# time but rather modify it based on measured backlog size. An empty backlog
+# will cause us to slowly decrease delay and a larger queue will cause us to
+# slowly increase it.
+def mv_pressure_formula_2(c):
+    backlog = max(len(rep.view_replica.requests) if rep.view_replica else 0 for rep in c.base_replicas)
+    if not hasattr(c, 'prev_delay'):
+        c.prev_delay = 0
+    if backlog > 1:
+        delay = (c.prev_delay+1)*1.001
+    else:
+        delay = c.prev_delay*0.999
+    c.prev_delay = delay
+    return delay
+
+# TODO: continue here. fomula_3 still doesn't work well.
+# Similarly to mv_pressure_formula_2, we calculate the derivative (actually,
+# change) of the delay. But here we use the derivative (change) of the backlog:
+# Unlike formula_2 which changed the delay at the same rate, here if the backlog
+# is growing quickly, we grow the delay quickly too.
+def mv_pressure_formula_3(c):
+    backlog = max(len(rep.view_replica.requests) if rep.view_replica else 0 for rep in c.base_replicas)
+    if not hasattr(c, 'prev_delay'):
+        c.prev_delay = 0.0
+    if not hasattr(c, 'prev_backlog'):
+        c.prev_backlog = 0
+    if backlog > 1:
+        print(backlog - c.prev_backlog)
+        delta = 1 + c.prev_delay * (backlog - c.prev_backlog)/100000.0
+        #delta = 1 + c.prev_delay*0.001
+        c.prev_delay = c.prev_delay + delta
+    else:
+        c.prev_delay = c.prev_delay*0.99
+    #print(c.prev_delay)
+    return c.prev_delay
+
+# Old attempts from formula2 code
+# TODO in backlog > 1 case: If the queue is high because of initial conditions,
+# it will take a long time to drain it, and all that time, we'll
+# remain at ql > 1 regardless of how we increase bp here.
+# So watch out not to increase it too much while the queue
+# is decreasing. I.e., let's not check if ql > 1 but rather
+# whether ql > prev_ql!!!  Didn't work... How to fix?
+##        # hack to only recalculate bp once per tick. Doesn't help anything.
+##        if not hasattr(self, 'prev_ntick'): # hack try
+##            self.prev_ntick = self.ntick # hack try
+##        if self.prev_ntick == self.ntick: # hack try
+##            return int(max(self.prev_bp,1)) # hack try
+##        self.prev_ntick = self.ntick # hack try
+##
+###        # try: have prev_ql and see if the queue increases, not if it's empty!
+###        if not hasattr(self, 'prev_ql'):
+###            self.prev_ql = ql
+##
+##        self.prev_ql = ql
+##
+
 
 # OLD mv_pressure code snippets. We should use some of these ideas,
 # or delete them.
@@ -171,38 +228,6 @@ def mv_pressure_linear_changing_alpha(c, dbacklog):
 #        #    self.hack1_ql = ql
 #        #ql = self.hack1_ql
 #        
-##        # Formula 2: Modify previous bp based on previous bp and measured
-##        # queue size. An empty queue will cause us to slowly decrease bp
-##        # and a larger queue will cause us to slowly increase it.
-##        if not hasattr(self, 'prev_bp'):
-##            self.prev_bp = 0
-###        if ql > 3: # TODO threshold?
-###            bp = self.prev_bp + 1
-###        else:
-###            bp = max(self.prev_bp - 1, 10)
-##        # hack to only recalculate bp once per tick. Doesn't help anything.
-##        if not hasattr(self, 'prev_ntick'): # hack try
-##            self.prev_ntick = self.ntick # hack try
-##        if self.prev_ntick == self.ntick: # hack try
-##            return int(max(self.prev_bp,1)) # hack try
-##        self.prev_ntick = self.ntick # hack try
-##
-###        # try: have prev_ql and see if the queue increases, not if it's empty!
-###        if not hasattr(self, 'prev_ql'):
-###            self.prev_ql = ql
-##
-##        if ql > 1:
-##            # TODO: If the queue is high because of initial conditions,
-##            # it will take a long time to drain it, and all that time, we'll
-##            # remain at ql > 1 regardless of how we increase bp here.
-##            # So watch out not to increase it too much while the queue
-##            # is decreasing. I.e., let's not check if ql > 1 but rather
-##            # whether ql > prev_ql!!!  Didn't work... How to fix?
-##            bp = (self.prev_bp+1)*1.001
-##        else:
-##            bp = self.prev_bp*0.999
-##        self.prev_ql = ql
-##
 #
 #        # Formula 4: Same as formula 3, but instead of using ql linearly,
 #        # use ql^E for some exponent E. The thinking is that while the delay
