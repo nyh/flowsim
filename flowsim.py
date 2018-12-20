@@ -159,8 +159,8 @@ def mv_pressure_linear_changing_alpha(c, dbacklog):
     return delay
 
 
-#        #return ql
-#
+# OLD mv_pressure code snippets. We should use some of these ideas,
+# or delete them.
 #        # Add random jitter
 #        #ql = max(0, ql + (random()-0.5)*100)
 #
@@ -267,6 +267,7 @@ class coordinator:
         self.metric_bg = metric("coordinator_%d_background_writes" % (id))
         self.metric_fg = metric("coordinator_%d_foreground_writes" % (id))
         self.metric_writes = metric("coordinator_%d_total_writes" % (id))
+        self.metric_mv_delay = metric("coordinator_%d_mv_delay" % (id))
     def reset_stats(self):
         self.stat_nticks = 0
         self.stat_nwrites = 0
@@ -281,110 +282,6 @@ class coordinator:
         self.ongoing_writes[rid] = len(self.base_replicas)
         self.stat_nwrites += 1
         self.total_writes += 1
-#    def mv_pressure(self):
-#        #return 0
-#        # Each of the view replicas (actually, replica shards) involved in this
-#        # request has a different amount of backlog, but we need one estimate
-#        # of pressure to convert into a delay. The best results come from taking
-#        # the *max* of the different queue lengths, which basically means we
-#        # will try to slow down the client to keep *that* queue under control
-#        # (which will typically cause the smaller queues to go down to zero).
-#        # Taking a *sum* of the different queue lengths is natural but NOT a
-#        # good idea: It can allow the largest queue to continue to grow while
-#        # a smaller queue shortens, giving the impression that we're fine
-#        # because the sum is no longer growing.
-#        ql = max(len(rep.view_replica.requests) if rep.view_replica else 0 for rep in self.base_replicas)
-#        #return ql
-#
-#        # Add random jitter
-#        #ql = max(0, ql + (random()-0.5)*100)
-#
-#        # Hack to only get an update of ql once every N ticks, not all the
-#        # time to check what happens if we use old ql information
-#        #if not hasattr(self, 'hack1_ntick') or self.ntick > self.hack1_ntick + 1000:
-#        #    self.hack1_ntick = self.ntick
-#        #    self.hack1_ql = ql
-#        #ql = self.hack1_ql
-#        
-##        # Formula 1: Look for plateau in ret (lower or higher delays will
-##        # result increasing or decreasing queue size, so we'll eventually
-##        # converge on plateau (gradient descent method?).
-##        # The ql we convege on is a function of the multiplier below - a higher
-##        # multiplier will result in lower ql (this is obvious, because the
-##        # *bp* of the plateau - when the queue no longer grows - is constant
-##        # so ql * multiplier is constant).
-##        bp = ql * 2.0
-##        # Formula 2: Modify previous bp based on previous bp and measured
-##        # queue size. An empty queue will cause us to slowly decrease bp
-##        # and a larger queue will cause us to slowly increase it.
-##        if not hasattr(self, 'prev_bp'):
-##            self.prev_bp = 0
-###        if ql > 3: # TODO threshold?
-###            bp = self.prev_bp + 1
-###        else:
-###            bp = max(self.prev_bp - 1, 10)
-##        # hack to only recalculate bp once per tick. Doesn't help anything.
-##        if not hasattr(self, 'prev_ntick'): # hack try
-##            self.prev_ntick = self.ntick # hack try
-##        if self.prev_ntick == self.ntick: # hack try
-##            return int(max(self.prev_bp,1)) # hack try
-##        self.prev_ntick = self.ntick # hack try
-##
-###        # try: have prev_ql and see if the queue increases, not if it's empty!
-###        if not hasattr(self, 'prev_ql'):
-###            self.prev_ql = ql
-##
-##        if ql > 1:
-##            # TODO: If the queue is high because of initial conditions,
-##            # it will take a long time to drain it, and all that time, we'll
-##            # remain at ql > 1 regardless of how we increase bp here.
-##            # So watch out not to increase it too much while the queue
-##            # is decreasing. I.e., let's not check if ql > 1 but rather
-##            # whether ql > prev_ql!!!  Didn't work... How to fix?
-##            bp = (self.prev_bp+1)*1.001
-##        else:
-##            bp = self.prev_bp*0.999
-##        self.prev_ql = ql
-##
-#        # Formula 3: like formula 1 but modifying the multiplicative constant
-#        # C. We have a desired stable queue length (dql), and if we've converged
-#        # on a ql > dql, we need to increase C to lower ql. And vice versa.
-#        dql = 200
-#        if not hasattr(self, 'C'):
-#            self.C = 1.0
-#        if abs(ql - dql)/dql < 0.1:
-#            # if ql is close enough (within 10%) to dql, then C is good
-#            # enough and we don't continue to improve it. This will save
-#            # us from oscillations around the perfect C and of the queue
-#            # length, and therefore of the performance.
-#            pass
-#        elif ql > dql:
-#            self.C = self.C * 1.001
-#        elif ql < dql and ql > 0:
-#            # Note: the queue not only becomes short if we increased C too
-#            # much - it can also becomes short if the server is not in full
-#            # utilization! I'm not sure how to solve that... But definitely
-#            # if the queue is completely empty, there is no point in changing
-#            # C because a zero ql will return 0 regardless of change to C.
-#            self.C = self.C * 0.999
-#        bp = self.C * ql
-#
-#        # Formula 4: Same as formula 3, but instead of using ql linearly,
-#        # use ql^E for some exponent E. The thinking is that while the delay
-#        # we calculate, bp, may need to change through several orders of
-#        # magnitude (as the client concurrency changes orders of magnitude),
-#        # we want the queue length to change less.
-#        # We divide the formula also by dql**(E-1) otherwise the starting C=1.0
-#        # is ridiculously high. This is easier to understand by unit analysis,
-#        # we use the unit-less ql/dql in the polynomial instead of unit-full
-#        # ql, and multiply the whole thing by dql to get the right units.
-#        #E = 3.0
-#        #bp = dql * self.C * (ql/dql)**E
-#
-#        #bp = 1.0 * ql
-# 
-##        self.prev_bp = bp
-#        return bp
     # Call delayed_reply() after already "replying" (a connection is "replied"
     # when it is put in background_writes, or deleted completely from
     # ongoing_writes). This will cause unreplied_writes() to continue counting
@@ -409,9 +306,9 @@ class coordinator:
         # Note that to set the delayed_reply array, the delay must be a
         # positive integer.
         delay = int(delay)
+        self.metric_mv_delay.out(self.ntick, delay)
         if delay <= 0:
             return
-        print(delay)
         self.delayed_reply[rid] = self.ntick + delay
     def tick(self):
         throttling = len(self.background_writes) >= self.max_background_writes
@@ -608,6 +505,13 @@ def plot_view_backlog(hz, b, fn, misc):
     # show only view replica 1
     plot '%s' using ($1/%s):($2) w lines lw 6 title 'View-update backlog'
     """ % (misc, b.view_replica.metric_pending.fn, hz))
+
+def plot_view_delay(hz, c, fn, misc):
+    plot(fn, """
+        set xlabel 'Time (seconds)'
+        %s
+        plot '%s'  using ($1/%s):($2/%s) w l lw 6 title 'Delay (seconds)'
+        """ % (misc, c.metric_mv_delay.fn, hz, hz))
 
 def plot_background_writes(hz, c, fn, misc):
     plot(fn, """

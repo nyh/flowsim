@@ -37,6 +37,9 @@ plot_throughput(hz, "out/2.png",
 # Show view-update backlog on base replica 1.
 plot_view_backlog(hz, b1, "out/3.png",
     "set grid")
+plot_view_delay(hz, c, "out/4.png",
+    "set grid")
+
 # Show the number of background writes on the coordinator, i.e., writes
 # for which the coordinator have already replied, but still have replicas
 # that have not replied.
@@ -46,4 +49,3 @@ plot_view_backlog(hz, b1, "out/3.png",
 #plot_background_writes(hz, c, "out/1.png",
 #    "set grid")
 
-# TODO: plot the delay
