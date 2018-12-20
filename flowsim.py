@@ -103,6 +103,19 @@ class replica:
 def mv_pressure_zero(c):
     return 0
 
+
+# Linear controller: set delay = backlog * alpha.
+# This will converge on the "just right" delay which causes the client
+# to slow down to the just right rate where we complete old requests at
+# the same rate the client sends us new requests, so the view-update
+# backlog plateaus - doesn't shrink and doesn't grow. This process
+# converges because if delay is too high, the backlog shrinks so delay
+# goes down; Conversely if delay is too low, backlog increases so delay
+# goes up. It will settle down on exactly the required plateau.
+# The backlog we converge on is a function of alpha - a higher alpha will
+# result in lower backlog (this is obvious, because the delay of the plateau
+# - when the queue no longer grows - is constant so backlog * alpha is
+# constant).
 def mv_pressure_linear_controller(c, alpha):
     # Each of the view replicas (actually, replica shards) involved in this
     # request has a different amount of backlog, but we need one estimate
@@ -114,17 +127,36 @@ def mv_pressure_linear_controller(c, alpha):
     # good idea: It can allow the largest queue to continue to grow while
     # a smaller queue shortens, giving the impression that we're fine
     # because the sum is no longer growing.
-    ql = max(len(rep.view_replica.requests) if rep.view_replica else 0 for rep in c.base_replicas)
+    backlog = max(len(rep.view_replica.requests) if rep.view_replica else 0 for rep in c.base_replicas)
+    delay = backlog * alpha
+    return delay
 
-    # Look for plateau in in ql - lower or higher delays will result
-    # in increasing or decreasing ql, so we'll eventually converge on
-    # plateau.
-    # The ql we convege on is a function of the multiplier below - a higher
-    # multiplier will result in lower ql (this is obvious, because the
-    # bp of the plateau - when the queue no longer grows - is constant
-    # so ql * multiplier is constant).
-    bp = ql * alpha
-    return bp
+# mv_pressure_linear_changing_alpha is like mv_pressure_linear_controller
+# but instead of picking a constant alpha, this algorithm starts with
+# alpha = 1.0 (currently saved as a member field in the controller object)
+# and slowly varies it to achieve a desired backlog length dbacklog.
+def mv_pressure_linear_changing_alpha(c, dbacklog):
+    if not hasattr(c, 'alpha'):
+        c.alpha = 1.0
+    backlog = max(len(rep.view_replica.requests) if rep.view_replica else 0 for rep in c.base_replicas)
+    if abs(backlog - dbacklog)/dbacklog < 0.1:
+        # if backlog is close enough (within 10%) to dbacklog, then alpha
+        # is good enough and we don't continue to improve it. This will
+        # save us from oscillations around the perfect alpha and of the
+        # queue length, and therefore of the performance.
+        pass
+    elif backlog > dbacklog:
+        c.alpha = c.alpha * 1.001
+    elif backlog < dbacklog and backlog > 0:
+        # TODO: the queue not only becomes short if we increased alpha
+        # too much - it can also becomes short if the server is not in
+        # full utilization! I'm not sure how to solve that... But
+        # definitely if the queue is completely empty, there is no point
+        # in changing alpha because a zero backlo will return 0 regardless
+        # of change to alpha.
+        c.alpha = c.alpha * 0.999
+    delay = backlog * c.alpha
+    return delay
 
 
 #        #return ql
@@ -139,14 +171,6 @@ def mv_pressure_linear_controller(c, alpha):
 #        #    self.hack1_ql = ql
 #        #ql = self.hack1_ql
 #        
-##        # Formula 1: Look for plateau in ret (lower or higher delays will
-##        # result increasing or decreasing queue size, so we'll eventually
-##        # converge on plateau (gradient descent method?).
-##        # The ql we convege on is a function of the multiplier below - a higher
-##        # multiplier will result in lower ql (this is obvious, because the
-##        # *bp* of the plateau - when the queue no longer grows - is constant
-##        # so ql * multiplier is constant).
-##        bp = ql * 2.0
 ##        # Formula 2: Modify previous bp based on previous bp and measured
 ##        # queue size. An empty queue will cause us to slowly decrease bp
 ##        # and a larger queue will cause us to slowly increase it.
@@ -179,28 +203,6 @@ def mv_pressure_linear_controller(c, alpha):
 ##            bp = self.prev_bp*0.999
 ##        self.prev_ql = ql
 ##
-#        # Formula 3: like formula 1 but modifying the multiplicative constant
-#        # C. We have a desired stable queue length (dql), and if we've converged
-#        # on a ql > dql, we need to increase C to lower ql. And vice versa.
-#        dql = 200
-#        if not hasattr(self, 'C'):
-#            self.C = 1.0
-#        if abs(ql - dql)/dql < 0.1:
-#            # if ql is close enough (within 10%) to dql, then C is good
-#            # enough and we don't continue to improve it. This will save
-#            # us from oscillations around the perfect C and of the queue
-#            # length, and therefore of the performance.
-#            pass
-#        elif ql > dql:
-#            self.C = self.C * 1.001
-#        elif ql < dql and ql > 0:
-#            # Note: the queue not only becomes short if we increased C too
-#            # much - it can also becomes short if the server is not in full
-#            # utilization! I'm not sure how to solve that... But definitely
-#            # if the queue is completely empty, there is no point in changing
-#            # C because a zero ql will return 0 regardless of change to C.
-#            self.C = self.C * 0.999
-#        bp = self.C * ql
 #
 #        # Formula 4: Same as formula 3, but instead of using ql linearly,
 #        # use ql^E for some exponent E. The thinking is that while the delay

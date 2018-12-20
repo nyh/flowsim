@@ -1,0 +1,6 @@
+# Test case for base table and view. Three replicas, one is 1% slower than
+# the other two. The views writes have equal speed. Writes with CL=2.
+def mv_pressure(c):
+    dbacklog = 200
+    return mv_pressure_linear_changing_alpha(c, dbacklog)
+exec(open('examples/mv_base').read())
