@@ -485,8 +485,9 @@ def plot_view_backlog(hz, b, fn, misc):
 def plot_background_writes(hz, c, fn, misc):
     plot(fn, """
         set xlabel 'Time (seconds)'
+        %s
         plot '%s'  using ($1/%s):2 w l lw 3 title 'Background writes'
-        """ % (c.metric_bg.fn, hz))
+        """ % (misc, c.metric_bg.fn, hz))
 
 import sys
 exec(open(sys.argv[1]).read())
