@@ -186,11 +186,12 @@ def mv_pressure_formula_3(c):
         c.prev_backlog = 0
     if backlog > 1:
         print(backlog - c.prev_backlog)
-        delta = 1 + c.prev_delay * (backlog - c.prev_backlog)/100000.0
+        delta = 1 + c.prev_delay * (backlog - c.prev_backlog)/100.0
         #delta = 1 + c.prev_delay*0.001
         c.prev_delay = c.prev_delay + delta
     else:
-        c.prev_delay = c.prev_delay*0.99
+        c.prev_delay = c.prev_delay*0.999
+    c.prev_backlog = backlog
     #print(c.prev_delay)
     return c.prev_delay
 
