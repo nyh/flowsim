@@ -117,17 +117,7 @@ def mv_pressure_zero(c):
 # - when the queue no longer grows - is constant so backlog * alpha is
 # constant).
 def mv_pressure_linear_controller(c, alpha):
-    # Each of the view replicas (actually, replica shards) involved in this
-    # request has a different amount of backlog, but we need one estimate
-    # of pressure to convert into a delay. The best results come from taking
-    # the *max* of the different queue lengths, which basically means we
-    # will try to slow down the client to keep *that* queue under control
-    # (which will typically cause the smaller queues to go down to zero).
-    # Taking a *sum* of the different queue lengths is natural but NOT a
-    # good idea: It can allow the largest queue to continue to grow while
-    # a smaller queue shortens, giving the impression that we're fine
-    # because the sum is no longer growing.
-    backlog = max(len(rep.view_replica.requests) if rep.view_replica else 0 for rep in c.base_replicas)
+    backlog = c.view_backlog()
     delay = backlog * alpha
     return delay
 
@@ -138,7 +128,7 @@ def mv_pressure_linear_controller(c, alpha):
 def mv_pressure_linear_changing_alpha(c, dbacklog):
     if not hasattr(c, 'alpha'):
         c.alpha = 1.0
-    backlog = max(len(rep.view_replica.requests) if rep.view_replica else 0 for rep in c.base_replicas)
+    backlog = c.view_backlog()
     if abs(backlog - dbacklog)/dbacklog < 0.1:
         # if backlog is close enough (within 10%) to dbacklog, then alpha
         # is good enough and we don't continue to improve it. This will
@@ -163,7 +153,7 @@ def mv_pressure_linear_changing_alpha(c, dbacklog):
 # will cause us to slowly decrease delay and a larger queue will cause us to
 # slowly increase it.
 def mv_pressure_formula_2(c):
-    backlog = max(len(rep.view_replica.requests) if rep.view_replica else 0 for rep in c.base_replicas)
+    backlog = c.view_backlog()
     if not hasattr(c, 'prev_delay'):
         c.prev_delay = 0
     if backlog > 1:
@@ -179,7 +169,7 @@ def mv_pressure_formula_2(c):
 # Unlike formula_2 which changed the delay at the same rate, here if the backlog
 # is growing quickly, we grow the delay quickly too.
 def mv_pressure_formula_3(c):
-    backlog = max(len(rep.view_replica.requests) if rep.view_replica else 0 for rep in c.base_replicas)
+    backlog = c.view_backlog()
     if not hasattr(c, 'prev_delay'):
         c.prev_delay = 0.0
     if not hasattr(c, 'prev_backlog'):
@@ -401,6 +391,21 @@ class coordinator:
         for rep in self.base_replicas:
             ret.update(rep.all_nodes())
         return ret
+    # Return an estimate of the view-update backlog which this coordinator
+    # should use to decide how much to delay the client to stop the growth
+    # of this view backlog.
+    # Each of the view replicas (actually, replica shards) involved in this
+    # request has a different amount of backlog, but we need one estimate
+    # of pressure to convert into a delay. The best results come from taking
+    # the *max* of the different queue lengths, which basically means we
+    # will try to slow down the client to keep *that* queue under control
+    # (which will typically cause the smaller queues to go down to zero).
+    # Taking a *sum* of the different queue lengths is natural but NOT a
+    # good idea: It can allow the largest queue to continue to grow while
+    # a smaller queue shortens, giving the impression that we're fine
+    # because the sum is no longer growing.
+    def view_backlog(self):
+        return max(len(rep.view_replica.requests) if rep.view_replica else 0 for rep in c.base_replicas)
 
 ###############################################################################
 
